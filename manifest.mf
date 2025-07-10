@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+MIDlet-Name: J2ME Game Store
+MIDlet-Version: 1.0
+MIDlet-Vendor: REPP.MY.ID
+MIDlet-1: GameStoreMidlet,,GameStoreMidlet
+MicroEdition-Configuration: CLDC-1.1
+MicroEdition-Profile: MIDP-2.0
