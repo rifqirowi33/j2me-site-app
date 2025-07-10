@@ -894,25 +894,54 @@ class GameDetailCanvas extends Canvas {
         repaint(); // marquee
     }
 
-    private int drawMultilineText(Graphics g, String text, int x, int y, int maxWidth) {
-        int lineHeight = font.getHeight();
-        String remaining = text;
-        while (remaining.length() > 0) {
-            int len = font.charsWidth(remaining.toCharArray(), 0, remaining.length());
-            int charsFit = 0;
-            for (int i = 1; i <= remaining.length(); i++) {
-                if (font.substringWidth(remaining, 0, i) > maxWidth) break;
-                charsFit = i;
-            }
-            if (charsFit == 0) break;
-            String line = remaining.substring(0, charsFit);
+   private int drawMultilineText(Graphics g, String text, int x, int y, int maxWidth) {
+    int lineHeight = font.getHeight();
+    String[] words = splitWords(text);
+    String line = "";
+    
+    for (int i = 0; i < words.length; i++) {
+        String testLine = line.equals("") ? words[i] : line + " " + words[i];
+        int testWidth = font.stringWidth(testLine);
+
+        if (testWidth > maxWidth) {
+            // Gambar baris sebelumnya
             g.drawString(line, x, y, Graphics.TOP | Graphics.LEFT);
             y += lineHeight;
-            remaining = remaining.substring(charsFit);
+            line = words[i];
+        } else {
+            line = testLine;
         }
-        return y;
     }
 
+    if (!line.equals("")) {
+        g.drawString(line, x, y, Graphics.TOP | Graphics.LEFT);
+        y += lineHeight;
+    }
+
+    return y;
+}
+
+private String[] splitWords(String text) {
+    Vector v = new Vector();
+    int start = 0;
+    for (int i = 0; i < text.length(); i++) {
+        if (text.charAt(i) == ' ') {
+            if (i > start) {
+                v.addElement(text.substring(start, i));
+            }
+            start = i + 1;
+        }
+    }
+    if (start < text.length()) {
+        v.addElement(text.substring(start));
+    }
+
+    String[] result = new String[v.size()];
+    for (int i = 0; i < v.size(); i++) {
+        result[i] = (String) v.elementAt(i);
+    }
+    return result;
+}
     protected void keyPressed(int keyCode) {
         int action = getGameAction(keyCode);
         int maxScroll = Math.max(0, contentHeight - getHeight() + 10);
