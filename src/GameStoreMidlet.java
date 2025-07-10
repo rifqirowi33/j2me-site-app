@@ -851,7 +851,7 @@ class GameDetailCanvas extends Canvas {
         }
     }
 
-    protected void paint(Graphics g) {
+protected void paint(Graphics g) {
     int w = getWidth(), h = getHeight();
     g.setColor(0); g.fillRect(0, 0, w, h);
     g.setColor(0xFFFFFF);
@@ -859,13 +859,36 @@ class GameDetailCanvas extends Canvas {
     Font normal = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
     g.setFont(normal);
 
-    int headerHeight = font.getHeight() + 10; // ruang untuk marquee dan garis
-    int footerHeight = font.getHeight(); // ruang untuk softkeys
+    int headerHeight = font.getHeight() + 10;
+    int footerHeight = font.getHeight();
     int contentAreaTop = headerHeight;
     int contentAreaHeight = h - headerHeight - footerHeight;
 
-    // ==== HEADER Tetap ====
-    g.setColor(0); g.fillRect(0, 0, w, headerHeight); // bg hitam header
+    int y = contentAreaTop - scrollY;
+
+    // === GAMBAR COVER DAN KONTEN DI-SCROLL ===
+    if (cover != null && y < h) {
+        g.drawImage(cover, w / 2, y, Graphics.TOP | Graphics.HCENTER);
+        y += cover.getHeight() + 8;
+    }
+
+    y = drawLabelAndText(g, "Deskripsi:", data[4], 5, y, w - 10);
+    y += 4;
+    y = drawLabelAndText(g, "Tahun:", (data.length > 3 ? data[3] : "-"), 5, y, w - 10);
+    y += 4;
+    y = drawLabelAndText(g, "Ukuran:", (data.length > 2 ? data[2] + " byte" : "-"), 5, y, w - 10);
+    contentHeight = y + scrollY;
+
+    // === SCROLLBAR ===
+    if (contentHeight > contentAreaHeight) {
+        int barH = contentAreaHeight * contentAreaHeight / contentHeight;
+        int barY = scrollY * contentAreaHeight / contentHeight + headerHeight;
+        g.setColor(0x444444); g.fillRect(w - 4, headerHeight, 3, contentAreaHeight);
+        g.setColor(0x00AAFF); g.fillRect(w - 4, barY, 3, barH);
+    }
+
+    // === HEADER DI ATAS SEGALANYA ===
+    g.setColor(0); g.fillRect(0, 0, w, headerHeight); // tutupi apapun di bawah
     g.setColor(0xFFFFFF);
     String title = data[0];
     long now = System.currentTimeMillis();
@@ -887,31 +910,7 @@ class GameDetailCanvas extends Canvas {
 
     g.drawLine(5, headerHeight - 1, w - 5, headerHeight - 1);
 
-    // ==== KONTEN YANG DI-SCROLL ====
-    int y = contentAreaTop - scrollY;
-
-    if (cover != null && y < h) {
-        g.drawImage(cover, w / 2, y, Graphics.TOP | Graphics.HCENTER);
-        y += cover.getHeight() + 8;
-    }
-
-    y = drawLabelAndText(g, "Deskripsi:", data[4], 5, y, w - 10);
-    y += 4;
-    y = drawLabelAndText(g, "Tahun:", (data.length > 3 ? data[3] : "-"), 5, y, w - 10);
-    y += 4;
-    y = drawLabelAndText(g, "Ukuran:", (data.length > 2 ? data[2] + " byte" : "-"), 5, y, w - 10);
-
-    contentHeight = y + scrollY;
-
-    // ==== SCROLLBAR ====
-    if (contentHeight > contentAreaHeight) {
-        int barH = contentAreaHeight * contentAreaHeight / contentHeight;
-        int barY = scrollY * contentAreaHeight / contentHeight + headerHeight;
-        g.setColor(0x444444); g.fillRect(w - 4, headerHeight, 3, contentAreaHeight);
-        g.setColor(0x00AAFF); g.fillRect(w - 4, barY, 3, barH);
-    }
-
-    // ==== FOOTER Tetap ====
+    // === FOOTER (SOFTKEYS) ===
     g.setColor(0); g.fillRect(0, h - footerHeight, w, footerHeight);
     g.setColor(0xFFFFFF);
     g.drawString("*:Download", 2, h, Graphics.BOTTOM | Graphics.LEFT);
@@ -920,72 +919,7 @@ class GameDetailCanvas extends Canvas {
     repaint();
 }
 
-
-//     protected void paint(Graphics g) {
-//     int w = getWidth(), h = getHeight();
-//     g.setColor(0); g.fillRect(0, 0, w, h);
-//     g.setColor(0xFFFFFF);
-
-//     int y = 5;
-
-//     // Judul Game (marquee)
-//     String title = data[0];
-//     long now = System.currentTimeMillis();
-//     if (now - lastMarqueeTime > 100) {
-//         marqueeOffset++;
-//         lastMarqueeTime = now;
-//     }
-
-//     int textW = font.stringWidth(title);
-//     int maxW = w - 10;
-//     if (textW > maxW) {
-//         int offset = marqueeOffset % (textW + 20);
-//         g.setClip(5, y, maxW, font.getHeight());
-//         g.drawString(title, 5 - offset, y, Graphics.TOP | Graphics.LEFT);
-//         g.setClip(0, 0, w, h);
-//     } else {
-//         g.drawString(title, 5, y, Graphics.TOP | Graphics.LEFT);
-//     }
-
-//     y += font.getHeight() + 5;
-//     g.drawLine(5, y, w - 5, y);
-//     y += 5;
-
-//     int contentY = y - scrollY;
-
-//     // Gambar cover
-//     if (cover != null && contentY < h) {
-//         g.drawImage(cover, w / 2, contentY, Graphics.TOP | Graphics.HCENTER);
-//         contentY += cover.getHeight() + 8;
-//     }
-
-//     // Informasi game dengan format: Label (bold) + Isi
-//     contentY = drawLabelAndText(g, "Deskripsi:", data[4], 5, contentY, maxW);
-//     contentY += 4;
-//     contentY = drawLabelAndText(g, "Tahun:", (data.length > 3 ? data[3] : "-"), 5, contentY, maxW);
-//     contentY += 4;
-//     contentY = drawLabelAndText(g, "Ukuran:", (data.length > 2 ? data[2] + " byte" : "-"), 5, contentY, maxW);
-//     contentY += 4;
-
-//     contentHeight = contentY + scrollY;
-
-//     // Scrollbar
-//     if (contentHeight > h) {
-//         int barH = h * h / contentHeight;
-//         int barY = scrollY * h / contentHeight;
-//         g.setColor(0x444444); g.fillRect(w - 4, 0, 3, h);
-//         g.setColor(0x00AAFF); g.fillRect(w - 4, barY, 3, barH);
-//     }
-
-//     // Softkeys
-//     g.setColor(0xFFFFFF);
-//     g.drawString("*:Download", 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.LEFT);
-//     g.drawString("#:Kembali", w - 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.RIGHT);
-
-//     repaint(); // marquee
-// }
-
-    private int drawMultilineText(Graphics g, String text, int x, int y, int maxWidth) {
+private int drawMultilineText(Graphics g, String text, int x, int y, int maxWidth) {
     int lineHeight = font.getHeight();
     String[] lines = wrapText(text, maxWidth);
 
@@ -1094,17 +1028,6 @@ protected void keyPressed(int keyCode) {
         } else if (keyCode == KEY_POUND) {
             GameStoreMidlet.this.showGameListFrom(GameStoreMidlet.this.gameListData, GameStoreMidlet.this.gameIcons);
         }
-
-
-            // int action = getGameAction(keyCode);
-        // int maxScroll = Math.max(0, contentHeight - getHeight() + 10);
-
-        // if (action == UP || keyCode == KEY_NUM2) {
-        //     scrollY -= 10; if (scrollY < 0) scrollY = 0;
-        //     repaint();
-        // } else if (action == DOWN || keyCode == KEY_NUM8) {
-        //     scrollY += 10; if (scrollY > maxScroll) scrollY = maxScroll;
-        //     repaint();
     }
 }
 
