@@ -799,6 +799,31 @@ class GameDetailCanvas extends Canvas {
     private int scrollY = 0, contentHeight;
     private int marqueeOffset = 0;
     private long lastMarqueeTime = 0;
+    private int drawLabelAndText(Graphics g, String label, String text, int x, int y, int maxWidth) {
+    // Gambar label tebal
+    Font bold = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_BOLD, Font.SIZE_SMALL);
+    Font normal = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
+
+    g.setFont(bold);
+    g.drawString(label, x, y, Graphics.TOP | Graphics.LEFT);
+
+    int labelWidth = bold.stringWidth(label);
+    g.setFont(normal);
+    String[] lines = wrapText(text, maxWidth - labelWidth);
+    int yy = y;
+
+    for (int i = 0; i < lines.length; i++) {
+        if (i == 0) {
+            g.drawString(lines[i], x + labelWidth, yy, Graphics.TOP | Graphics.LEFT);
+        } else {
+            yy += normal.getHeight();
+            g.drawString(lines[i], x, yy, Graphics.TOP | Graphics.LEFT);
+        }
+    }
+
+    return yy + normal.getHeight();
+}
+
 
     public GameDetailCanvas(String[] data, Image icon) {
         this.data = data;
@@ -826,87 +851,96 @@ class GameDetailCanvas extends Canvas {
         }
     }
 
+
     protected void paint(Graphics g) {
-        int w = getWidth(), h = getHeight();
-        g.setColor(0); g.fillRect(0, 0, w, h);
-        g.setColor(0xFFFFFF);
+    int w = getWidth(), h = getHeight();
+    g.setColor(0); g.fillRect(0, 0, w, h);
+    g.setColor(0xFFFFFF);
 
-        int y = 5;
+    int y = 5;
 
-        // Judul Game (marquee)
-        String title = data[0];
-        long now = System.currentTimeMillis();
-        if (now - lastMarqueeTime > 100) {
-            marqueeOffset++;
-            lastMarqueeTime = now;
-        }
-
-        int textW = font.stringWidth(title);
-        int maxW = w - 10;
-        if (textW > maxW) {
-            int offset = marqueeOffset % (textW + 20);
-            g.setClip(5, y, maxW, font.getHeight());
-            g.drawString(title, 5 - offset, y, Graphics.TOP | Graphics.LEFT);
-            g.setClip(0, 0, w, h);
-        } else {
-            g.drawString(title, 5, y, Graphics.TOP | Graphics.LEFT);
-        }
-
-        y += font.getHeight() + 5;
-        g.drawLine(5, y, w - 5, y);
-        y += 5;
-
-        // Gambar cover
-        if (cover != null) {
-            g.drawImage(cover, w / 2, y, Graphics.TOP | Graphics.HCENTER);
-            y += cover.getHeight() + 5;
-        }
-
-        // Informasi game
-        String[] info = new String[] {
-            "Deskripsi: " + data[4],
-            "Resolusi: " + (data.length > 6 ? data[6] : "-"),
-            "Tahun: " + (data.length > 3 ? data[3] : "-"),
-            "Ukuran: " + (data.length > 2 ? data[2] + " byte" : "-")
-        };
-
-        int contentY = y;
-        for (int i = 0; i < info.length; i++) {
-            contentY = drawMultilineText(g, info[i], 5, contentY - scrollY, w - 10);
-            contentY += 4;
-        }
-
-        contentHeight = contentY;
-
-        // Scrollbar
-        if (contentHeight > h) {
-            int barH = h * h / contentHeight;
-            int barY = scrollY * h / contentHeight;
-            g.setColor(0x444444); g.fillRect(w - 4, 0, 3, h);
-            g.setColor(0x00AAFF); g.fillRect(w - 4, barY, 3, barH);
-        }
-
-        // Softkeys
-        g.setColor(0xFFFFFF);
-        g.drawString("Download", 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.LEFT);
-        g.drawString("Kembali", w - 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.RIGHT);
-
-        repaint(); // marquee
+    // Judul Game (marquee)
+    String title = data[0];
+    long now = System.currentTimeMillis();
+    if (now - lastMarqueeTime > 100) {
+        marqueeOffset++;
+        lastMarqueeTime = now;
     }
 
-   private int drawMultilineText(Graphics g, String text, int x, int y, int maxWidth) {
+    int textW = font.stringWidth(title);
+    int maxW = w - 10;
+    if (textW > maxW) {
+        int offset = marqueeOffset % (textW + 20);
+        g.setClip(5, y, maxW, font.getHeight());
+        g.drawString(title, 5 - offset, y, Graphics.TOP | Graphics.LEFT);
+        g.setClip(0, 0, w, h);
+    } else {
+        g.drawString(title, 5, y, Graphics.TOP | Graphics.LEFT);
+    }
+
+    y += font.getHeight() + 5;
+    g.drawLine(5, y, w - 5, y);
+    y += 5;
+
+    int contentY = y - scrollY;
+
+    // Gambar cover
+    if (cover != null && contentY < h) {
+        g.drawImage(cover, w / 2, contentY, Graphics.TOP | Graphics.HCENTER);
+        contentY += cover.getHeight() + 8;
+    }
+
+    // Informasi game dengan format: Label (bold) + Isi
+    contentY = drawLabelAndText(g, "Deskripsi:", data[4], 5, contentY, maxW);
+    contentY += 4;
+    contentY = drawLabelAndText(g, "Tahun:", (data.length > 3 ? data[3] : "-"), 5, contentY, maxW);
+    contentY += 4;
+    contentY = drawLabelAndText(g, "Ukuran:", (data.length > 2 ? data[2] + " byte" : "-"), 5, contentY, maxW);
+    contentY += 4;
+
+    contentHeight = contentY + scrollY;
+
+    // Scrollbar
+    if (contentHeight > h) {
+        int barH = h * h / contentHeight;
+        int barY = scrollY * h / contentHeight;
+        g.setColor(0x444444); g.fillRect(w - 4, 0, 3, h);
+        g.setColor(0x00AAFF); g.fillRect(w - 4, barY, 3, barH);
+    }
+
+    // Softkeys
+    g.setColor(0xFFFFFF);
+    g.drawString("*:Download", 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.LEFT);
+    g.drawString("#:Kembali", w - 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.RIGHT);
+
+    repaint(); // marquee
+}
+
+    private int drawMultilineText(Graphics g, String text, int x, int y, int maxWidth) {
     int lineHeight = font.getHeight();
-    String[] words = splitWords(text);
+    String[] lines = wrapText(text, maxWidth);
+
+    for (int i = 0; i < lines.length; i++) {
+        g.drawString(lines[i], x, y, Graphics.TOP | Graphics.LEFT);
+        y += lineHeight;
+    }
+
+    return y;
+}
+
+private String[] wrapText(String text, int maxWidth) {
+    Vector lines = new Vector();
+    String[] words = splitWordsSafe(text, maxWidth);
     String line = "";
-    
+
     for (int i = 0; i < words.length; i++) {
         String testLine = line.equals("") ? words[i] : line + " " + words[i];
         int testWidth = font.stringWidth(testLine);
 
         if (testWidth > maxWidth) {
-            // Gambar baris sebelumnya
-            g.drawString(line, x, y, Graphics.TOP | Graphics.LEFT);
-            y += lineHeight;
+            if (!line.equals("")) {
+                lines.addElement(line);
+            }
             line = words[i];
         } else {
             line = testLine;
@@ -914,51 +948,92 @@ class GameDetailCanvas extends Canvas {
     }
 
     if (!line.equals("")) {
-        g.drawString(line, x, y, Graphics.TOP | Graphics.LEFT);
-        y += lineHeight;
+        lines.addElement(line);
     }
 
-    return y;
+    String[] result = new String[lines.size()];
+    for (int i = 0; i < lines.size(); i++) {
+        result[i] = (String) lines.elementAt(i);
+    }
+
+    return result;
 }
 
-private String[] splitWords(String text) {
-    Vector v = new Vector();
+private String[] splitWordsSafe(String text, int maxWidth) {
+    Vector result = new Vector();
+    int len = text.length();
     int start = 0;
-    for (int i = 0; i < text.length(); i++) {
+
+    for (int i = 0; i < len; i++) {
         if (text.charAt(i) == ' ') {
             if (i > start) {
-                v.addElement(text.substring(start, i));
+                addWord(result, text.substring(start, i), maxWidth);
             }
             start = i + 1;
         }
     }
-    if (start < text.length()) {
-        v.addElement(text.substring(start));
+
+    if (start < len) {
+        addWord(result, text.substring(start), maxWidth);
     }
 
-    String[] result = new String[v.size()];
-    for (int i = 0; i < v.size(); i++) {
-        result[i] = (String) v.elementAt(i);
+    String[] arr = new String[result.size()];
+    for (int i = 0; i < result.size(); i++) {
+        arr[i] = (String) result.elementAt(i);
     }
-    return result;
+    return arr;
 }
-    protected void keyPressed(int keyCode) {
-        int action = getGameAction(keyCode);
-        int maxScroll = Math.max(0, contentHeight - getHeight() + 10);
 
-        if (action == UP || keyCode == KEY_NUM2) {
-            scrollY -= 10; if (scrollY < 0) scrollY = 0;
-            repaint();
-        } else if (action == DOWN || keyCode == KEY_NUM8) {
-            scrollY += 10; if (scrollY > maxScroll) scrollY = maxScroll;
-            repaint();
-        } else if (keyCode == KEY_STAR || action == LEFT) {
-            try {
-                GameStoreMidlet.this.platformRequest(data[1]); // download URL
+private void addWord(Vector result, String word, int maxWidth) {
+    if (font.stringWidth(word) <= maxWidth) {
+        result.addElement(word);
+        return;
+    }
+
+    String part = "";
+    for (int i = 0; i < word.length(); i++) {
+        part += word.charAt(i);
+        if (font.stringWidth(part) > maxWidth) {
+            result.addElement(part.substring(0, part.length() - 1));
+            part = "" + word.charAt(i);
+        }
+    }
+
+    if (!part.equals("")) {
+        result.addElement(part);
+    }
+}
+
+protected void keyPressed(int keyCode) {
+     int action = getGameAction(keyCode);
+    int h = getHeight();
+
+    if (action == UP) {
+        scrollY -= font.getHeight();
+        if (scrollY < 0) scrollY = 0;
+        repaint();
+    } else if (action == DOWN) {
+        scrollY += font.getHeight();
+        if (scrollY > contentHeight - h) scrollY = contentHeight - h;
+        repaint();
+    } else if (keyCode == KEY_STAR) {
+        try {
+            GameStoreMidlet.this.platformRequest(data[1]); // download URL
             } catch (Exception e) {}
-        } else if (keyCode == KEY_POUND || action == RIGHT || action == FIRE) {
+        } else if (keyCode == KEY_POUND) {
             GameStoreMidlet.this.showGameListFrom(GameStoreMidlet.this.gameListData, GameStoreMidlet.this.gameIcons);
         }
+
+
+            // int action = getGameAction(keyCode);
+        // int maxScroll = Math.max(0, contentHeight - getHeight() + 10);
+
+        // if (action == UP || keyCode == KEY_NUM2) {
+        //     scrollY -= 10; if (scrollY < 0) scrollY = 0;
+        //     repaint();
+        // } else if (action == DOWN || keyCode == KEY_NUM8) {
+        //     scrollY += 10; if (scrollY > maxScroll) scrollY = maxScroll;
+        //     repaint();
     }
 }
 
