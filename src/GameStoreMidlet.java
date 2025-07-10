@@ -851,15 +851,22 @@ class GameDetailCanvas extends Canvas {
         }
     }
 
-
     protected void paint(Graphics g) {
     int w = getWidth(), h = getHeight();
     g.setColor(0); g.fillRect(0, 0, w, h);
     g.setColor(0xFFFFFF);
 
-    int y = 5;
+    Font normal = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
+    g.setFont(normal);
 
-    // Judul Game (marquee)
+    int headerHeight = font.getHeight() + 10; // ruang untuk marquee dan garis
+    int footerHeight = font.getHeight(); // ruang untuk softkeys
+    int contentAreaTop = headerHeight;
+    int contentAreaHeight = h - headerHeight - footerHeight;
+
+    // ==== HEADER Tetap ====
+    g.setColor(0); g.fillRect(0, 0, w, headerHeight); // bg hitam header
+    g.setColor(0xFFFFFF);
     String title = data[0];
     long now = System.currentTimeMillis();
     if (now - lastMarqueeTime > 100) {
@@ -871,50 +878,112 @@ class GameDetailCanvas extends Canvas {
     int maxW = w - 10;
     if (textW > maxW) {
         int offset = marqueeOffset % (textW + 20);
-        g.setClip(5, y, maxW, font.getHeight());
-        g.drawString(title, 5 - offset, y, Graphics.TOP | Graphics.LEFT);
+        g.setClip(5, 5, maxW, font.getHeight());
+        g.drawString(title, 5 - offset, 5, Graphics.TOP | Graphics.LEFT);
         g.setClip(0, 0, w, h);
     } else {
-        g.drawString(title, 5, y, Graphics.TOP | Graphics.LEFT);
+        g.drawString(title, 5, 5, Graphics.TOP | Graphics.LEFT);
     }
 
-    y += font.getHeight() + 5;
-    g.drawLine(5, y, w - 5, y);
-    y += 5;
+    g.drawLine(5, headerHeight - 1, w - 5, headerHeight - 1);
 
-    int contentY = y - scrollY;
+    // ==== KONTEN YANG DI-SCROLL ====
+    int y = contentAreaTop - scrollY;
 
-    // Gambar cover
-    if (cover != null && contentY < h) {
-        g.drawImage(cover, w / 2, contentY, Graphics.TOP | Graphics.HCENTER);
-        contentY += cover.getHeight() + 8;
+    if (cover != null && y < h) {
+        g.drawImage(cover, w / 2, y, Graphics.TOP | Graphics.HCENTER);
+        y += cover.getHeight() + 8;
     }
 
-    // Informasi game dengan format: Label (bold) + Isi
-    contentY = drawLabelAndText(g, "Deskripsi:", data[4], 5, contentY, maxW);
-    contentY += 4;
-    contentY = drawLabelAndText(g, "Tahun:", (data.length > 3 ? data[3] : "-"), 5, contentY, maxW);
-    contentY += 4;
-    contentY = drawLabelAndText(g, "Ukuran:", (data.length > 2 ? data[2] + " byte" : "-"), 5, contentY, maxW);
-    contentY += 4;
+    y = drawLabelAndText(g, "Deskripsi:", data[4], 5, y, w - 10);
+    y += 4;
+    y = drawLabelAndText(g, "Tahun:", (data.length > 3 ? data[3] : "-"), 5, y, w - 10);
+    y += 4;
+    y = drawLabelAndText(g, "Ukuran:", (data.length > 2 ? data[2] + " byte" : "-"), 5, y, w - 10);
 
-    contentHeight = contentY + scrollY;
+    contentHeight = y + scrollY;
 
-    // Scrollbar
-    if (contentHeight > h) {
-        int barH = h * h / contentHeight;
-        int barY = scrollY * h / contentHeight;
-        g.setColor(0x444444); g.fillRect(w - 4, 0, 3, h);
+    // ==== SCROLLBAR ====
+    if (contentHeight > contentAreaHeight) {
+        int barH = contentAreaHeight * contentAreaHeight / contentHeight;
+        int barY = scrollY * contentAreaHeight / contentHeight + headerHeight;
+        g.setColor(0x444444); g.fillRect(w - 4, headerHeight, 3, contentAreaHeight);
         g.setColor(0x00AAFF); g.fillRect(w - 4, barY, 3, barH);
     }
 
-    // Softkeys
+    // ==== FOOTER Tetap ====
+    g.setColor(0); g.fillRect(0, h - footerHeight, w, footerHeight);
     g.setColor(0xFFFFFF);
-    g.drawString("*:Download", 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.LEFT);
-    g.drawString("#:Kembali", w - 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.RIGHT);
+    g.drawString("*:Download", 2, h, Graphics.BOTTOM | Graphics.LEFT);
+    g.drawString("#:Kembali", w - 2, h, Graphics.BOTTOM | Graphics.RIGHT);
 
-    repaint(); // marquee
+    repaint();
 }
+
+
+//     protected void paint(Graphics g) {
+//     int w = getWidth(), h = getHeight();
+//     g.setColor(0); g.fillRect(0, 0, w, h);
+//     g.setColor(0xFFFFFF);
+
+//     int y = 5;
+
+//     // Judul Game (marquee)
+//     String title = data[0];
+//     long now = System.currentTimeMillis();
+//     if (now - lastMarqueeTime > 100) {
+//         marqueeOffset++;
+//         lastMarqueeTime = now;
+//     }
+
+//     int textW = font.stringWidth(title);
+//     int maxW = w - 10;
+//     if (textW > maxW) {
+//         int offset = marqueeOffset % (textW + 20);
+//         g.setClip(5, y, maxW, font.getHeight());
+//         g.drawString(title, 5 - offset, y, Graphics.TOP | Graphics.LEFT);
+//         g.setClip(0, 0, w, h);
+//     } else {
+//         g.drawString(title, 5, y, Graphics.TOP | Graphics.LEFT);
+//     }
+
+//     y += font.getHeight() + 5;
+//     g.drawLine(5, y, w - 5, y);
+//     y += 5;
+
+//     int contentY = y - scrollY;
+
+//     // Gambar cover
+//     if (cover != null && contentY < h) {
+//         g.drawImage(cover, w / 2, contentY, Graphics.TOP | Graphics.HCENTER);
+//         contentY += cover.getHeight() + 8;
+//     }
+
+//     // Informasi game dengan format: Label (bold) + Isi
+//     contentY = drawLabelAndText(g, "Deskripsi:", data[4], 5, contentY, maxW);
+//     contentY += 4;
+//     contentY = drawLabelAndText(g, "Tahun:", (data.length > 3 ? data[3] : "-"), 5, contentY, maxW);
+//     contentY += 4;
+//     contentY = drawLabelAndText(g, "Ukuran:", (data.length > 2 ? data[2] + " byte" : "-"), 5, contentY, maxW);
+//     contentY += 4;
+
+//     contentHeight = contentY + scrollY;
+
+//     // Scrollbar
+//     if (contentHeight > h) {
+//         int barH = h * h / contentHeight;
+//         int barY = scrollY * h / contentHeight;
+//         g.setColor(0x444444); g.fillRect(w - 4, 0, 3, h);
+//         g.setColor(0x00AAFF); g.fillRect(w - 4, barY, 3, barH);
+//     }
+
+//     // Softkeys
+//     g.setColor(0xFFFFFF);
+//     g.drawString("*:Download", 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.LEFT);
+//     g.drawString("#:Kembali", w - 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.RIGHT);
+
+//     repaint(); // marquee
+// }
 
     private int drawMultilineText(Graphics g, String text, int x, int y, int maxWidth) {
     int lineHeight = font.getHeight();
@@ -1006,7 +1075,8 @@ private void addWord(Vector result, String word, int maxWidth) {
 
 protected void keyPressed(int keyCode) {
      int action = getGameAction(keyCode);
-    int h = getHeight();
+     int contentAreaHeight = getHeight() - font.getHeight() - 10 - font.getHeight(); // header + footer
+     int h = getHeight();
 
     if (action == UP) {
         scrollY -= font.getHeight();
@@ -1014,7 +1084,8 @@ protected void keyPressed(int keyCode) {
         repaint();
     } else if (action == DOWN) {
         scrollY += font.getHeight();
-        if (scrollY > contentHeight - h) scrollY = contentHeight - h;
+        if (scrollY > contentHeight - contentAreaHeight)
+            scrollY = contentHeight - contentAreaHeight;
         repaint();
     } else if (keyCode == KEY_STAR) {
         try {
