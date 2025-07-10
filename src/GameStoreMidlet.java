@@ -179,7 +179,6 @@ public class GameStoreMidlet extends MIDlet implements CommandListener {
     return parts;
 }
 
-
 private void showGameListFrom(String[][] data, Image[] icons) {
     this.gameListData = data; // simpan supaya bisa diakses ulang
     this.gameIcons = icons;   // simpan icon-icon game
@@ -192,6 +191,9 @@ private void showGameListFrom(String[][] data) {
     showGameListFrom(data, this.gameIcons != null ? this.gameIcons : new Image[data.length]);
 }
 
+private void showDetailScreen(String[] game, Image icon) {
+    display.setCurrent(new GameDetailCanvas(game, icon));
+}
 
     private void showPopup(String title, String content) {
     previousScreen = display.getCurrent(); // Simpan sebelum tampilkan popup
@@ -647,8 +649,8 @@ class WelcomeCanvas extends Canvas {
 }
 
 class GameListCanvas extends Canvas {
-    private Command cmdMenu = new Command("Menu", Command.SCREEN, 1);
-    private Command cmdExit = new Command("Keluar", Command.EXIT, 2);
+    // private Command cmdMenu = new Command("Menu", Command.SCREEN, 1);
+    // private Command cmdExit = new Command("Keluar", Command.EXIT, 2);
     private String[][] gameData;
     private Image[] icons;
     private int selectedIndex = 0;
@@ -669,8 +671,8 @@ class GameListCanvas extends Canvas {
         int iconHeight = (icons != null && icons.length > 0 && icons[0] != null) ? icons[0].getHeight() : defaultIconHeight;
         itemHeight = Math.max(font.getHeight(), iconHeight) + 6;
 
-        addCommand(cmdMenu);
-        addCommand(cmdExit);
+        // addCommand(cmdMenu);
+        // addCommand(cmdExit);
         setCommandListener(GameStoreMidlet.this);
     }
 
@@ -771,7 +773,7 @@ class GameListCanvas extends Canvas {
             repaint();
         } else if (action == FIRE || keyCode == KEY_NUM5) {
             String[] selectedGame = gameData[selectedIndex];
-            GameStoreMidlet.this.showPopup(selectedGame[0], selectedGame[4]);
+            GameStoreMidlet.this.showDetailScreen(selectedGame, icons[selectedIndex]);
         } else if (keyCode == KEY_STAR) {
             GameStoreMidlet.this.showPopup("Menu", "1. Segarkan\n2. Tentang Aplikasi");
         } else if (keyCode == KEY_POUND) {
@@ -787,6 +789,147 @@ class GameListCanvas extends Canvas {
         scrollOffset = 0;
         marqueeOffset = 0;
         repaint();
+    }
+}
+
+class GameDetailCanvas extends Canvas {
+    private String[] data;
+    private Image cover;
+    private Font font;
+    private int scrollY = 0, contentHeight;
+    private int marqueeOffset = 0;
+    private long lastMarqueeTime = 0;
+
+    public GameDetailCanvas(String[] data, Image icon) {
+        this.data = data;
+        this.font = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
+
+        // Coba ambil cover (kolom ke-6)
+        try {
+            if (data.length >= 6 && data[5] != null && data[5].startsWith("http")) {
+                HttpConnection conn = (HttpConnection) Connector.open(data[5]);
+                conn.setRequestMethod(HttpConnection.GET);
+                InputStream is = conn.openInputStream();
+
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                int b;
+                while ((b = is.read()) != -1) baos.write(b);
+                is.close(); conn.close();
+
+                Image temp = Image.createImage(baos.toByteArray(), 0, baos.size());
+                if (temp.getWidth() < getWidth() && temp.getHeight() < getHeight() / 2) {
+                    cover = temp;
+                }
+            }
+        } catch (Exception e) {
+            cover = null;
+        }
+    }
+
+    protected void paint(Graphics g) {
+        int w = getWidth(), h = getHeight();
+        g.setColor(0); g.fillRect(0, 0, w, h);
+        g.setColor(0xFFFFFF);
+
+        int y = 5;
+
+        // Judul Game (marquee)
+        String title = data[0];
+        long now = System.currentTimeMillis();
+        if (now - lastMarqueeTime > 100) {
+            marqueeOffset++;
+            lastMarqueeTime = now;
+        }
+
+        int textW = font.stringWidth(title);
+        int maxW = w - 10;
+        if (textW > maxW) {
+            int offset = marqueeOffset % (textW + 20);
+            g.setClip(5, y, maxW, font.getHeight());
+            g.drawString(title, 5 - offset, y, Graphics.TOP | Graphics.LEFT);
+            g.setClip(0, 0, w, h);
+        } else {
+            g.drawString(title, 5, y, Graphics.TOP | Graphics.LEFT);
+        }
+
+        y += font.getHeight() + 5;
+        g.drawLine(5, y, w - 5, y);
+        y += 5;
+
+        // Gambar cover
+        if (cover != null) {
+            g.drawImage(cover, w / 2, y, Graphics.TOP | Graphics.HCENTER);
+            y += cover.getHeight() + 5;
+        }
+
+        // Informasi game
+        String[] info = new String[] {
+            "Deskripsi: " + data[4],
+            "Resolusi: " + (data.length > 6 ? data[6] : "-"),
+            "Tahun: " + (data.length > 3 ? data[3] : "-"),
+            "Ukuran: " + (data.length > 2 ? data[2] + " byte" : "-")
+        };
+
+        int contentY = y;
+        for (int i = 0; i < info.length; i++) {
+            contentY = drawMultilineText(g, info[i], 5, contentY - scrollY, w - 10);
+            contentY += 4;
+        }
+
+        contentHeight = contentY;
+
+        // Scrollbar
+        if (contentHeight > h) {
+            int barH = h * h / contentHeight;
+            int barY = scrollY * h / contentHeight;
+            g.setColor(0x444444); g.fillRect(w - 4, 0, 3, h);
+            g.setColor(0x00AAFF); g.fillRect(w - 4, barY, 3, barH);
+        }
+
+        // Softkeys
+        g.setColor(0xFFFFFF);
+        g.drawString("Download", 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.LEFT);
+        g.drawString("Kembali", w - 2, h - font.getHeight(), Graphics.BOTTOM | Graphics.RIGHT);
+
+        repaint(); // marquee
+    }
+
+    private int drawMultilineText(Graphics g, String text, int x, int y, int maxWidth) {
+        int lineHeight = font.getHeight();
+        String remaining = text;
+        while (remaining.length() > 0) {
+            int len = font.charsWidth(remaining.toCharArray(), 0, remaining.length());
+            int charsFit = 0;
+            for (int i = 1; i <= remaining.length(); i++) {
+                if (font.substringWidth(remaining, 0, i) > maxWidth) break;
+                charsFit = i;
+            }
+            if (charsFit == 0) break;
+            String line = remaining.substring(0, charsFit);
+            g.drawString(line, x, y, Graphics.TOP | Graphics.LEFT);
+            y += lineHeight;
+            remaining = remaining.substring(charsFit);
+        }
+        return y;
+    }
+
+    protected void keyPressed(int keyCode) {
+        int action = getGameAction(keyCode);
+        int maxScroll = Math.max(0, contentHeight - getHeight() + 10);
+
+        if (action == UP || keyCode == KEY_NUM2) {
+            scrollY -= 10; if (scrollY < 0) scrollY = 0;
+            repaint();
+        } else if (action == DOWN || keyCode == KEY_NUM8) {
+            scrollY += 10; if (scrollY > maxScroll) scrollY = maxScroll;
+            repaint();
+        } else if (keyCode == KEY_STAR || action == LEFT) {
+            try {
+                GameStoreMidlet.this.platformRequest(data[1]); // download URL
+            } catch (Exception e) {}
+        } else if (keyCode == KEY_POUND || action == RIGHT || action == FIRE) {
+            GameStoreMidlet.this.showGameListFrom(GameStoreMidlet.this.gameListData, GameStoreMidlet.this.gameIcons);
+        }
     }
 }
 
