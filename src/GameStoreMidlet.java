@@ -953,10 +953,26 @@ protected void paint(Graphics g) {
 
     y = drawLabelAndText(g, "Deskripsi:", data[4], 5, y, w - 10);
     y += 4;
-    y = drawLabelAndText(g, "Tahun:", (data.length > 3 ? data[3] : "-"), 5, y, w - 10);
+    y = drawLabelAndText(g, "Layar:", (data.length > 3 ? data[3] : "-"), 5, y, w - 10);
     y += 4;
-    y = drawLabelAndText(g, "Ukuran:", (data.length > 2 ? data[2] + " byte" : "-"), 5, y, w - 10);
-    contentHeight = y + scrollY;
+    String sizeStr = "-";
+    if (data.length > 2 && data[2] != null && !data[2].equals("")) {
+    try {
+        int sizeBytes = Integer.parseInt(data[2]);
+        double sizeKB = sizeBytes / 1024.0;
+        sizeStr = ((int) sizeKB) + " KB";
+
+        if (sizeKB >= 1024) {
+            double sizeMB = sizeKB / 1024.0;
+            // Format 1 desimal MB
+            sizeStr += " (" + Math.round(sizeMB * 10) / 10.0 + " MB)";
+        }
+            } catch (Exception e) {
+                sizeStr = data[2] + " byte";
+            }
+        }   
+        y = drawLabelAndText(g, "Ukuran:", sizeStr, 5, y, w - 10);
+        contentHeight = y + scrollY;
 
     // === SCROLLBAR ===
     if (contentHeight > contentAreaHeight) {
@@ -992,7 +1008,7 @@ protected void paint(Graphics g) {
     // === FOOTER (SOFTKEYS) ===
     g.setColor(0); g.fillRect(0, h - footerHeight, w, footerHeight);
     g.setColor(0xFFFFFF);
-    g.drawString("*:Download", 2, h, Graphics.BOTTOM | Graphics.LEFT);
+    g.drawString("*:Unduh", 2, h, Graphics.BOTTOM | Graphics.LEFT);
     g.drawString("#:Kembali", w - 2, h, Graphics.BOTTOM | Graphics.RIGHT);
 
     repaint();
