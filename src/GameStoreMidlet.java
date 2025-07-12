@@ -1302,6 +1302,9 @@ public class DirectorySelectionCanvas extends Canvas {
     private String currentPath = "file:///";
     private String[] folders;
     private int selectedIndex = 0;
+    private int scrollOffset = 0;
+    private int maxVisible = 0;
+
 
     public DirectorySelectionCanvas(GameStoreMidlet midlet) {
         this.midlet = midlet;
@@ -1336,62 +1339,56 @@ public class DirectorySelectionCanvas extends Canvas {
             }
         }
 
-    // private void loadFolders() {
-    //     try {
-    //         FileConnection dir = (FileConnection) Connector.open(currentPath, Connector.READ);
-    //         java.util.Enumeration e = dir.list("*", true);
-    //         java.util.Vector list = new java.util.Vector();
-    //         list.addElement(".."); // untuk kembali
+   protected void paint(Graphics g) {
+    int w = getWidth(), h = getHeight();
+    Font font = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
+    int footerHeight = font.getHeight() + 4;
+    int listTop = 20;
+    int listHeight = h - listTop - footerHeight;
 
-    //         while (e.hasMoreElements()) {
-    //             String name = (String) e.nextElement();
-    //             if (name.endsWith("/")) list.addElement(name);
-    //         }
+    g.setColor(0); g.fillRect(0, 0, w, h);
+    g.setColor(0xFFFFFF);
+    g.setFont(font);
 
-    //         folders = new String[list.size()];
-    //         list.copyInto(folders);
-    //         dir.close();
-    //     } catch (Exception e) {
-    //         folders = new String[] { ".." };
-    //     }
-    // }
+    g.drawString("Folder: " + currentPath, 5, 2, Graphics.TOP | Graphics.LEFT);
 
-    protected void paint(Graphics g) {
-        int w = getWidth(), h = getHeight();
-        Font font = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
-        g.setColor(0); g.fillRect(0, 0, w, h);
-        g.setColor(0xFFFFFF);
-        g.setFont(font);
+    maxVisible = listHeight / font.getHeight();
 
-        g.drawString("Folder: " + currentPath, 5, 2, Graphics.TOP | Graphics.LEFT);
-
-        for (int i = 0; i < folders.length; i++) {
-            int y = 20 + i * font.getHeight();
-            if (i == selectedIndex) {
-                g.setColor(0x00AAFF);
-                g.fillRect(0, y, w, font.getHeight());
-                g.setColor(0x000000);
-            } else {
-                g.setColor(0xFFFFFF);
-            }
-            g.drawString(folders[i], 5, y, Graphics.TOP | Graphics.LEFT);
+    for (int i = 0; i < maxVisible && (i + scrollOffset) < folders.length; i++) {
+        int y = listTop + i * font.getHeight();
+        int idx = i + scrollOffset;
+        if (idx == selectedIndex) {
+            g.setColor(0x00AAFF);
+            g.fillRect(0, y, w, font.getHeight());
+            g.setColor(0x000000);
+        } else {
+            g.setColor(0xFFFFFF);
         }
-
-        // Footer
-        g.setColor(0x888888);
-        String foot = "*:Simpan   OK:Buka   #:Kembali";
-        if (currentPath.equals("file:///")) foot = "*:Simpan   OK:Buka   #:Batal";
-        g.drawString(foot, w / 2, h - 2, Graphics.BOTTOM | Graphics.HCENTER);
+        g.drawString(folders[idx], 5, y, Graphics.TOP | Graphics.LEFT);
     }
 
+    // Footer background
+    g.setColor(0x000000);
+    g.fillRect(0, h - footerHeight, w, footerHeight);
+
+    // Footer text
+    g.setColor(0x888888);
+    String foot = "*:Simpan   OK:Buka   #:Kembali";
+    if (currentPath.equals("file:///")) foot = "*:Simpan   OK:Buka   #:Batal";
+    g.drawString(foot, w / 2, h - 2, Graphics.BOTTOM | Graphics.HCENTER);
+}
+
     protected void keyPressed(int keyCode) {
+        int fontHeight = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL).getHeight();
         int action = getGameAction(keyCode);
 
         if (action == UP) {
-            selectedIndex = (selectedIndex - 1 + folders.length) % folders.length;
+            if (selectedIndex > 0) selectedIndex--;
+            if (selectedIndex < scrollOffset) scrollOffset--;
             repaint();
         } else if (action == DOWN) {
-            selectedIndex = (selectedIndex + 1) % folders.length;
+            if (selectedIndex < folders.length - 1) selectedIndex++;
+            if (selectedIndex >= scrollOffset + maxVisible) scrollOffset++;
             repaint();
         } else if (action == FIRE || keyCode == KEY_NUM5) {
             String sel = folders[selectedIndex];
