@@ -2,6 +2,7 @@ import javax.microedition.midlet.*;
 import javax.microedition.io.Connector;
 import javax.microedition.io.file.FileConnection; // ⛔ pastikan emulatormu mendukung JSR-75
 import javax.microedition.io.HttpConnection;
+import javax.microedition.io.file.FileSystemRegistry;
 import javax.microedition.lcdui.*;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -22,6 +23,10 @@ public class GameStoreMidlet extends MIDlet implements CommandListener {
     private boolean firstInstall = true;
     private String[][] gameListData = null;
     private String[][] gameData;
+    private String pendingDownloadURL;
+    private String pendingDownloadTitle;
+    private String pendingDownloadFileName;
+
 
     public void startApp() {
         display = Display.getDisplay(this);
@@ -272,7 +277,14 @@ private void showDetailScreen(final String[] data, final Image icon) {
     }
 
     public void pauseApp() {}
+
     public void destroyApp(boolean unconditional) {}
+
+    public void backToDetail() {
+    if (lastDetailCanvas != null) {
+        display.setCurrent(lastDetailCanvas);
+    }
+}
 
 class SplashCanvas extends Canvas {
         private Image logo;
@@ -1117,14 +1129,17 @@ protected void keyPressed(int keyCode) {
         }
         repaint();
     } else if (keyCode == KEY_STAR) {
-        // Softkey kiri untuk mulai download
-        String gameUrl = data[1]; // URL_JAR
-        String fileName = data[0].replace(' ', '_') + ".jar";
-        String savePath = "file:///root1/" + fileName;
-        String title = data[0];
+       String gameUrl = data[1];
+       String title = data[0];
+       String fileName = title.replace(' ', '_') + ".jar";
+       
+       GameStoreMidlet.this.pendingDownloadURL = gameUrl;
+       GameStoreMidlet.this.pendingDownloadTitle = title;
+       GameStoreMidlet.this.pendingDownloadFileName = fileName;
+       
+       GameStoreMidlet.this.lastDetailCanvas = this;
+       GameStoreMidlet.this.display.setCurrent(new DirectorySelectionCanvas(GameStoreMidlet.this));
 
-        lastDetailCanvas = this; // Simpan screen sebelum download
-        GameStoreMidlet.this.display.setCurrent(new DownloadCanvas(GameStoreMidlet.this, gameUrl, savePath, title));
     } else if (keyCode == KEY_POUND) {
         GameStoreMidlet.this.showGameListFrom(GameStoreMidlet.this.gameListData, GameStoreMidlet.this.gameIcons);
     }
@@ -1282,5 +1297,133 @@ class DownloadCanvas extends Canvas implements Runnable {
     }
 }
 
+public class DirectorySelectionCanvas extends Canvas {
+    private GameStoreMidlet midlet;
+    private String currentPath = "file:///";
+    private String[] folders;
+    private int selectedIndex = 0;
+
+    public DirectorySelectionCanvas(GameStoreMidlet midlet) {
+        this.midlet = midlet;
+        loadFolders();
+    }
+
+    private void loadFolders() {
+        try {
+            java.util.Vector list = new java.util.Vector();
+            list.addElement(".."); // untuk kembali
+            
+            if (currentPath.equals("file:///")) { // List root seperti root1/, root2/, SDCard/
+                java.util.Enumeration roots = FileSystemRegistry.listRoots();
+                while (roots.hasMoreElements()) {
+                    String root = (String) roots.nextElement();
+                    list.addElement(root); // sudh pakai trailing slash, misal "root1/"
+                    }
+                } else {
+                    FileConnection dir = (FileConnection) Connector.open(currentPath, Connector.READ);
+                    java.util.Enumeration e = dir.list("*", true);
+                    while (e.hasMoreElements()) {
+                        String name = (String) e.nextElement();
+                        if (name.endsWith("/")) list.addElement(name);
+                    }
+                    dir.close();
+                }
+                
+                folders = new String[list.size()];
+                list.copyInto(folders);
+            } catch (Exception e) {
+                folders = new String[] { ".." };
+            }
+        }
+
+    // private void loadFolders() {
+    //     try {
+    //         FileConnection dir = (FileConnection) Connector.open(currentPath, Connector.READ);
+    //         java.util.Enumeration e = dir.list("*", true);
+    //         java.util.Vector list = new java.util.Vector();
+    //         list.addElement(".."); // untuk kembali
+
+    //         while (e.hasMoreElements()) {
+    //             String name = (String) e.nextElement();
+    //             if (name.endsWith("/")) list.addElement(name);
+    //         }
+
+    //         folders = new String[list.size()];
+    //         list.copyInto(folders);
+    //         dir.close();
+    //     } catch (Exception e) {
+    //         folders = new String[] { ".." };
+    //     }
+    // }
+
+    protected void paint(Graphics g) {
+        int w = getWidth(), h = getHeight();
+        Font font = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
+        g.setColor(0); g.fillRect(0, 0, w, h);
+        g.setColor(0xFFFFFF);
+        g.setFont(font);
+
+        g.drawString("Folder: " + currentPath, 5, 2, Graphics.TOP | Graphics.LEFT);
+
+        for (int i = 0; i < folders.length; i++) {
+            int y = 20 + i * font.getHeight();
+            if (i == selectedIndex) {
+                g.setColor(0x00AAFF);
+                g.fillRect(0, y, w, font.getHeight());
+                g.setColor(0x000000);
+            } else {
+                g.setColor(0xFFFFFF);
+            }
+            g.drawString(folders[i], 5, y, Graphics.TOP | Graphics.LEFT);
+        }
+
+        // Footer
+        g.setColor(0x888888);
+        String foot = "*:Simpan   OK:Buka   #:Kembali";
+        if (currentPath.equals("file:///")) foot = "*:Simpan   OK:Buka   #:Batal";
+        g.drawString(foot, w / 2, h - 2, Graphics.BOTTOM | Graphics.HCENTER);
+    }
+
+    protected void keyPressed(int keyCode) {
+        int action = getGameAction(keyCode);
+
+        if (action == UP) {
+            selectedIndex = (selectedIndex - 1 + folders.length) % folders.length;
+            repaint();
+        } else if (action == DOWN) {
+            selectedIndex = (selectedIndex + 1) % folders.length;
+            repaint();
+        } else if (action == FIRE || keyCode == KEY_NUM5) {
+            String sel = folders[selectedIndex];
+            if (sel.equals("..")) {
+                if (!currentPath.equals("file:///")) {
+                    int lastSlash = currentPath.lastIndexOf('/', currentPath.length() - 2);
+                    if (lastSlash > 7) {
+                        currentPath = currentPath.substring(0, lastSlash + 1);
+                    } else {
+                        currentPath = "file:///";
+                    }
+                    loadFolders(); selectedIndex = 0;
+                    repaint();
+                }
+            } else {
+                currentPath = currentPath + sel;
+                loadFolders(); selectedIndex = 0;
+                repaint();
+            }
+        } else if (keyCode == KEY_STAR) {
+            // Konfirmasi pilih direktori simpan
+            String path = currentPath + midlet.pendingDownloadFileName;
+            midlet.display.setCurrent(new DownloadCanvas(midlet, midlet.pendingDownloadURL, path, midlet.pendingDownloadTitle));
+        } else if (keyCode == KEY_POUND) {
+            if (currentPath.equals("file:///")) {
+                midlet.backToDetail(); // batal
+            } else {
+                // sama seperti memilih ".."
+                keyPressed(KEY_NUM5);
+            }
+        }
+    }
+}
 
 }
