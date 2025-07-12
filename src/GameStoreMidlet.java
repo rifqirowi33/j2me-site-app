@@ -185,7 +185,7 @@ public class GameStoreMidlet extends MIDlet implements CommandListener {
 private void showGameListFrom(String[][] data, Image[] icons) {
     this.gameListData = data; // simpan supaya bisa diakses ulang
     this.gameIcons = icons;   // simpan icon-icon game
-    currentGameCanvas = new GameListCanvas(data, icons); // ← Canvas constructor harus 2 argumen
+    currentGameCanvas = new GameListCanvas(data, icons); // Canvas constructor harus 2 argumen
     display.setCurrent(currentGameCanvas);
 }
 
@@ -194,8 +194,41 @@ private void showGameListFrom(String[][] data) {
     showGameListFrom(data, this.gameIcons != null ? this.gameIcons : new Image[data.length]);
 }
 
-private void showDetailScreen(String[] game, Image icon) {
-    display.setCurrent(new GameDetailCanvas(game, icon));
+private void showDetailScreen(final String[] data, final Image icon) {
+    final Canvas loading = new DetailLoadingCanvas();
+    display.setCurrent(loading);
+
+    new Thread() {
+        public void run() {
+            try { Thread.sleep(100); } catch (Exception e) {}
+
+            Image cover = null;
+            try {
+                if (data.length >= 6 && data[5] != null && data[5].startsWith("http")) {
+                    HttpConnection conn = (HttpConnection) Connector.open(data[5]);
+                    conn.setRequestMethod(HttpConnection.GET);
+                    InputStream is = conn.openInputStream();
+
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    int b;
+                    while ((b = is.read()) != -1) baos.write(b);
+                    is.close(); conn.close();
+
+                    Image temp = Image.createImage(baos.toByteArray(), 0, baos.size());
+                    if (temp.getWidth() < loading.getWidth() && temp.getHeight() < loading.getHeight() / 2) {
+                        cover = temp;
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Gagal ambil cover: " + e.toString());
+            }
+
+            final Image finalCover = cover;
+            final GameDetailCanvas detailCanvas = new GameDetailCanvas(data, finalCover);
+            lastDetailCanvas = detailCanvas;
+            display.setCurrent(detailCanvas);
+        }
+    }.start();
 }
 
     private void showPopup(String title, String content) {
@@ -280,6 +313,32 @@ class LoadingCanvas extends Canvas {
             g.fillRect(x + 1, y + 1, (bw - 2) * progress / 100, bh - 2);
         }
     }
+
+class DetailLoadingCanvas extends Canvas {
+    private int dots = 0;
+
+    public DetailLoadingCanvas() {
+        new Thread() {
+            public void run() {
+                while (display.getCurrent() == DetailLoadingCanvas.this) {
+                    dots = (dots + 1) % 4;
+                    repaint();
+                    try { Thread.sleep(400); } catch (Exception e) {}
+                }
+            }
+        }.start();
+    }
+
+    protected void paint(Graphics g) {
+        int w = getWidth(), h = getHeight();
+        g.setColor(0);
+        g.fillRect(0, 0, w, h);
+        g.setColor(0xFFFFFF);
+        String loadingText = "Memuat";
+        for (int i = 0; i < dots; i++) loadingText += ".";
+        g.drawString(loadingText, w / 2, h / 2, Graphics.HCENTER | Graphics.VCENTER);
+    }
+}
 
 class PopupCanvas extends Canvas {
         private String title, content;
@@ -1044,7 +1103,8 @@ protected void keyPressed(int keyCode) {
     } else if (keyCode == KEY_STAR) {
         // Softkey kiri untuk mulai download
         String gameUrl = data[1]; // URL_JAR
-        String savePath = "file:///E:/Games/" + data[0].replace(' ', '_') + ".jar"; // ubah sesuai path ponselmu
+        String fileName = data[0].replace(' ', '_') + ".jar";
+        String savePath = "file:///root1/" + fileName;
         String title = data[0];
 
         lastDetailCanvas = this; // Simpan screen sebelum download
@@ -1067,6 +1127,9 @@ class DownloadCanvas extends Canvas implements Runnable {
     private long lastMarqueeTime = 0;
     private int marqueeOffset = 0;
     private Font font = Font.getDefaultFont();
+    private boolean isError = false;
+    private boolean isCancelled = false;
+
 
     public DownloadCanvas(GameStoreMidlet midlet, String url, String savePath, String gameTitle) {
     this.midlet = midlet;
@@ -1111,15 +1174,19 @@ class DownloadCanvas extends Canvas implements Runnable {
 
             os.flush();
             if (!cancelDownload) {
+                isDownloading = false;
                 GameStoreMidlet.this.showPopup("Unduhan selesai!", "");
             } else {
+                isDownloading = false;
+                isCancelled = true;
                 GameStoreMidlet.this.showPopup("Download dibatalkan.", "");
-            }
-
+            } 
             GameStoreMidlet.this.display.setCurrent(GameStoreMidlet.this.lastDetailCanvas);
 
         } catch (Exception e) {
-            GameStoreMidlet.this.showPopup("Gagal mengunduh: " + e.getMessage(), "");
+            isError = true;
+            isDownloading = false;
+            GameStoreMidlet.this.showPopup("Gagal mengunduh", e.getMessage());
             GameStoreMidlet.this.display.setCurrent(GameStoreMidlet.this.lastDetailCanvas);
         } finally {
             try { if (os != null) os.close(); } catch (Exception e) {}
@@ -1165,12 +1232,20 @@ class DownloadCanvas extends Canvas implements Runnable {
         }
 
         // Progress bar hijau
-        g.setColor(0x00FF00);
+        if (isError || isCancelled) {
+            g.setColor(0xFF0000); // merah
+            } else {
+                g.setColor(0x00FF00); // hijau
+            }
         int barW = totalBytes > 0 ? (progressBytes * (w - 10) / totalBytes) : 0;
         g.fillRect(5, font.getHeight() + 3, barW, 2);
 
         // Progress text
-        g.setColor(0x00FF00);
+        if (isError || isCancelled) {
+            g.setColor(0xFF0000); // merah
+            } else {
+                g.setColor(0x00FF00); // hijau
+            }
         String progressText = progressBytes + " / " + totalBytes +
                               " (" + (totalBytes > 0 ? (progressBytes * 100 / totalBytes) : 0) + "%)";
         g.drawString(progressText, w / 2, h - font.getHeight() - 3, Graphics.BOTTOM | Graphics.HCENTER);
@@ -1183,8 +1258,10 @@ class DownloadCanvas extends Canvas implements Runnable {
 
     protected void keyPressed(int keyCode) {
         int action = getGameAction(keyCode);
-        if (action == RIGHT) {
+        if (action == RIGHT && isDownloading) {
             cancelDownload = true;
+            isDownloading = false;
+            isCancelled = true;
         }
     }
 }
