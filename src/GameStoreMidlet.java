@@ -1152,7 +1152,7 @@ class DownloadCanvas extends Canvas implements Runnable {
     private String gameTitle;
     private GameStoreMidlet midlet;
     private int progressBytes = 0;
-    private int totalBytes = 0;
+    private int totalBytes = -1;
     private boolean isDownloading = false;
     private boolean cancelDownload = false;
     private long lastMarqueeTime = 0;
@@ -1176,15 +1176,20 @@ class DownloadCanvas extends Canvas implements Runnable {
         isDownloading = true;
         cancelDownload = false;
         progressBytes = 0;
+        startAnimation();
         new Thread(this).start();
-        new Thread(new Runnable() {
+    }
+
+    private void startAnimation() {
+        new Thread() {
             public void run() {
                 while (isDownloading) {
                     repaint();
                     try { Thread.sleep(100); } catch (Exception e) {}
                 }
+                repaint();
             }
-        }).start();
+        }.start();
     }
 
     public void run() {
@@ -1197,8 +1202,6 @@ class DownloadCanvas extends Canvas implements Runnable {
             conn = (HttpConnection) Connector.open(url);
             conn.setRequestMethod(HttpConnection.GET);
             totalBytes = (int) conn.getLength();
-
-            if (totalBytes <= 0) totalBytes = 1024 * 500; // fallback jika server tidak menyertakan Content-Length
 
             is = conn.openInputStream();
             fc = (FileConnection) Connector.open(savePath, Connector.WRITE);
@@ -1215,45 +1218,51 @@ class DownloadCanvas extends Canvas implements Runnable {
             }
 
             os.flush();
+
+            // Jika tidak ada Content-Length dari server, pakai progressBytes sebagai total
+            if (totalBytes <= 0) totalBytes = progressBytes;
+
             isDownloading = false;
             downloadComplete = true;
 
             if (!cancelDownload) {
                 downloadSuccess = true;
             } else {
-                downloadFailed = true;
                 isCancelled = true;
+                downloadFailed = true;
             }
-            repaint();
 
         } catch (Exception e) {
             isDownloading = false;
             downloadComplete = true;
+            downloadSuccess = false;
             downloadFailed = true;
             isError = true;
-            repaint();
         } finally {
             try { if (os != null) os.close(); } catch (Exception e) {}
             try { if (is != null) is.close(); } catch (Exception e) {}
             try { if (conn != null) conn.close(); } catch (Exception e) {}
             try { if (fc != null) fc.close(); } catch (Exception e) {}
+            repaint();
         }
     }
 
     protected void paint(Graphics g) {
         int w = getWidth(), h = getHeight();
         g.setColor(0); g.fillRect(0, 0, w, h);
-        g.setColor(0xFFFFFF);
         g.setFont(font);
 
         // Header
-        g.setColor(0x000000); g.fillRect(0, 0, w, font.getHeight() + 6);
+        g.setColor(0x000000);
+        g.fillRect(0, 0, w, font.getHeight() + 6);
         g.setColor(0xFFFFFF);
+
         long now = System.currentTimeMillis();
         if (now - lastMarqueeTime > 100) {
             marqueeOffset++;
             lastMarqueeTime = now;
         }
+
         int textW = font.stringWidth(gameTitle);
         int maxW = w - 10;
         if (textW > maxW) {
@@ -1271,7 +1280,7 @@ class DownloadCanvas extends Canvas implements Runnable {
         if (isError || isCancelled) {
             status = "Dibatalkan!";
             statusColor = 0xFF0000;
-        } else if (!isDownloading && downloadSuccess) {
+        } else if (downloadComplete && downloadSuccess) {
             status = "Berhasil!";
             statusColor = 0x00FF00;
         }
@@ -1283,25 +1292,29 @@ class DownloadCanvas extends Canvas implements Runnable {
         int barW = w - 40;
         int barH = 10;
         int barX = 20;
-        int barY = font.getHeight() + 28;
+        int barY = font.getHeight() + 30;
 
         g.setColor((isError || isCancelled) ? 0xFF0000 : 0xFFFFFF);
         g.drawRect(barX, barY, barW, barH);
 
-        int fillW = (totalBytes > 0) ? (progressBytes * barW / totalBytes) : 0;
-        if (fillW > 0) {
-            g.setColor((isError || isCancelled) ? 0x880000 : 0x00FF00);
-            g.fillRect(barX + 1, barY + 1, fillW, barH - 2);
-        }
-
-        // Teks di bawah progress bar
+        int fillW = 0;
+        int percent = 0;
         if (totalBytes > 0) {
-            int percent = (progressBytes * 100 / totalBytes);
-            int kb = progressBytes / 1024;
-            String progText = kb + "KB / " + percent + "%";
-            g.setColor(0xCCCCCC);
-            g.drawString(progText, w / 2, barY + barH + 4, Graphics.TOP | Graphics.HCENTER);
+            fillW = (progressBytes * barW) / totalBytes;
+            percent = (progressBytes * 100) / totalBytes;
         }
+        if (fillW < 1 && progressBytes > 0) fillW = 1;
+        if (fillW > barW) fillW = barW;
+        if (percent > 100) percent = 100;
+
+        g.setColor((isError || isCancelled) ? 0x880000 : 0x00FF00);
+        g.fillRect(barX + 1, barY + 1, fillW - 2, barH - 2);
+
+        // Progress text
+        int kb = progressBytes / 1024;
+        String progText = kb + "KB / " + percent + "%";
+        g.setColor(0xFFFFFF);
+        g.drawString(progText, w / 2, barY + barH + 2, Graphics.TOP | Graphics.HCENTER);
 
         // Footer
         int footerY = h - font.getHeight() - 2;
@@ -1319,10 +1332,12 @@ class DownloadCanvas extends Canvas implements Runnable {
     }
 
     protected void keyPressed(int keyCode) {
-        if (isDownloading && keyCode == KEY_POUND) {
-            cancelDownload = true;
-            isDownloading = false;
-            isCancelled = true;
+        if (isDownloading) {
+            if (keyCode == KEY_POUND) {
+                cancelDownload = true;
+                isDownloading = false;
+                isCancelled = true;
+            }
         } else if (isError || isCancelled) {
             if (keyCode == KEY_STAR) {
                 midlet.display.setCurrent(new DownloadCanvas(midlet, url, savePath, gameTitle));
