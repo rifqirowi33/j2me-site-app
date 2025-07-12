@@ -1,6 +1,6 @@
 import javax.microedition.midlet.*;
 import javax.microedition.io.Connector;
-import javax.microedition.io.file.FileConnection; // ⛔ pastikan emulatormu mendukung JSR-75
+import javax.microedition.io.file.FileConnection;
 import javax.microedition.io.HttpConnection;
 import javax.microedition.io.file.FileSystemRegistry;
 import javax.microedition.lcdui.*;
@@ -1160,22 +1160,31 @@ class DownloadCanvas extends Canvas implements Runnable {
     private Font font = Font.getDefaultFont();
     private boolean isError = false;
     private boolean isCancelled = false;
-
+    private boolean downloadComplete = false;
+    private boolean downloadSuccess = false;
+    private boolean downloadFailed = false;
 
     public DownloadCanvas(GameStoreMidlet midlet, String url, String savePath, String gameTitle) {
-    this.midlet = midlet;
-    this.url = url;
-    this.savePath = savePath;
-    this.gameTitle = gameTitle;
-    startDownload();
-}
-
+        this.midlet = midlet;
+        this.url = url;
+        this.savePath = savePath;
+        this.gameTitle = gameTitle;
+        startDownload();
+    }
 
     private void startDownload() {
         isDownloading = true;
         cancelDownload = false;
         progressBytes = 0;
         new Thread(this).start();
+        new Thread(new Runnable() {
+            public void run() {
+                while (isDownloading) {
+                    repaint();
+                    try { Thread.sleep(100); } catch (Exception e) {}
+                }
+            }
+        }).start();
     }
 
     public void run() {
@@ -1188,6 +1197,8 @@ class DownloadCanvas extends Canvas implements Runnable {
             conn = (HttpConnection) Connector.open(url);
             conn.setRequestMethod(HttpConnection.GET);
             totalBytes = (int) conn.getLength();
+
+            if (totalBytes <= 0) totalBytes = 1024 * 500; // fallback jika server tidak menyertakan Content-Length
 
             is = conn.openInputStream();
             fc = (FileConnection) Connector.open(savePath, Connector.WRITE);
@@ -1204,21 +1215,23 @@ class DownloadCanvas extends Canvas implements Runnable {
             }
 
             os.flush();
+            isDownloading = false;
+            downloadComplete = true;
+
             if (!cancelDownload) {
-                isDownloading = false;
-                GameStoreMidlet.this.showPopup("Unduhan selesai!", "");
+                downloadSuccess = true;
             } else {
-                isDownloading = false;
+                downloadFailed = true;
                 isCancelled = true;
-                GameStoreMidlet.this.showPopup("Download dibatalkan.", "");
-            } 
-            GameStoreMidlet.this.display.setCurrent(GameStoreMidlet.this.lastDetailCanvas);
+            }
+            repaint();
 
         } catch (Exception e) {
-            isError = true;
             isDownloading = false;
-            GameStoreMidlet.this.showPopup("Gagal mengunduh", e.getMessage());
-            GameStoreMidlet.this.display.setCurrent(GameStoreMidlet.this.lastDetailCanvas);
+            downloadComplete = true;
+            downloadFailed = true;
+            isError = true;
+            repaint();
         } finally {
             try { if (os != null) os.close(); } catch (Exception e) {}
             try { if (is != null) is.close(); } catch (Exception e) {}
@@ -1227,72 +1240,99 @@ class DownloadCanvas extends Canvas implements Runnable {
         }
     }
 
-    public void backToDetail() {
-        if (lastDetailCanvas != null) {
-            display.setCurrent(lastDetailCanvas);
-        }
-    }
-
-
     protected void paint(Graphics g) {
         int w = getWidth(), h = getHeight();
         g.setColor(0); g.fillRect(0, 0, w, h);
         g.setColor(0xFFFFFF);
+        g.setFont(font);
 
         // Header
-        g.setColor(0);
-        g.fillRect(0, 0, w, font.getHeight() + 6);
+        g.setColor(0x000000); g.fillRect(0, 0, w, font.getHeight() + 6);
         g.setColor(0xFFFFFF);
-
-        int y = 3;
         long now = System.currentTimeMillis();
         if (now - lastMarqueeTime > 100) {
             marqueeOffset++;
             lastMarqueeTime = now;
         }
-
         int textW = font.stringWidth(gameTitle);
         int maxW = w - 10;
         if (textW > maxW) {
             int offset = marqueeOffset % (textW + 20);
-            g.setClip(5, y, maxW, font.getHeight());
-            g.drawString(gameTitle, 5 - offset, y, Graphics.TOP | Graphics.LEFT);
+            g.setClip(5, 3, maxW, font.getHeight());
+            g.drawString(gameTitle, 5 - offset, 3, Graphics.TOP | Graphics.LEFT);
             g.setClip(0, 0, w, h);
         } else {
-            g.drawString(gameTitle, 5, y, Graphics.TOP | Graphics.LEFT);
+            g.drawString(gameTitle, 5, 3, Graphics.TOP | Graphics.LEFT);
         }
 
-        // Progress bar hijau
+        // Status
+        String status = "Mengunduh...";
+        int statusColor = 0x00FF00;
         if (isError || isCancelled) {
-            g.setColor(0xFF0000); // merah
-            } else {
-                g.setColor(0x00FF00); // hijau
-            }
-        int barW = totalBytes > 0 ? (progressBytes * (w - 10) / totalBytes) : 0;
-        g.fillRect(5, font.getHeight() + 3, barW, 2);
+            status = "Dibatalkan!";
+            statusColor = 0xFF0000;
+        } else if (!isDownloading && downloadSuccess) {
+            status = "Berhasil!";
+            statusColor = 0x00FF00;
+        }
 
-        // Progress text
-        if (isError || isCancelled) {
-            g.setColor(0xFF0000); // merah
-            } else {
-                g.setColor(0x00FF00); // hijau
-            }
-        String progressText = progressBytes + " / " + totalBytes +
-                              " (" + (totalBytes > 0 ? (progressBytes * 100 / totalBytes) : 0) + "%)";
-        g.drawString(progressText, w / 2, h - font.getHeight() - 3, Graphics.BOTTOM | Graphics.HCENTER);
+        g.setColor(statusColor);
+        g.drawString(status, w / 2, font.getHeight() + 10, Graphics.TOP | Graphics.HCENTER);
 
-        // Tombol Batal
-        g.drawString("Batal", w - 2, h - 2, Graphics.BOTTOM | Graphics.RIGHT);
+        // Progress bar
+        int barW = w - 40;
+        int barH = 10;
+        int barX = 20;
+        int barY = font.getHeight() + 28;
 
-        if (isDownloading) repaint();
+        g.setColor((isError || isCancelled) ? 0xFF0000 : 0xFFFFFF);
+        g.drawRect(barX, barY, barW, barH);
+
+        int fillW = (totalBytes > 0) ? (progressBytes * barW / totalBytes) : 0;
+        if (fillW > 0) {
+            g.setColor((isError || isCancelled) ? 0x880000 : 0x00FF00);
+            g.fillRect(barX + 1, barY + 1, fillW, barH - 2);
+        }
+
+        // Teks di bawah progress bar
+        if (totalBytes > 0) {
+            int percent = (progressBytes * 100 / totalBytes);
+            int kb = progressBytes / 1024;
+            String progText = kb + "KB / " + percent + "%";
+            g.setColor(0xCCCCCC);
+            g.drawString(progText, w / 2, barY + barH + 4, Graphics.TOP | Graphics.HCENTER);
+        }
+
+        // Footer
+        int footerY = h - font.getHeight() - 2;
+        g.setColor(0); g.fillRect(0, footerY, w, font.getHeight() + 4);
+        g.setColor(0xFFFFFF);
+
+        if (isDownloading) {
+            g.drawString("#:Batal", w - 2, h, Graphics.BOTTOM | Graphics.RIGHT);
+        } else if (isCancelled || isError) {
+            g.drawString("*:Coba Lagi", 2, h, Graphics.BOTTOM | Graphics.LEFT);
+            g.drawString("#:Kembali", w - 2, h, Graphics.BOTTOM | Graphics.RIGHT);
+        } else {
+            g.drawString("#:Kembali", w - 2, h, Graphics.BOTTOM | Graphics.RIGHT);
+        }
     }
 
     protected void keyPressed(int keyCode) {
-        int action = getGameAction(keyCode);
-        if (action == RIGHT && isDownloading) {
+        if (isDownloading && keyCode == KEY_POUND) {
             cancelDownload = true;
             isDownloading = false;
             isCancelled = true;
+        } else if (isError || isCancelled) {
+            if (keyCode == KEY_STAR) {
+                midlet.display.setCurrent(new DownloadCanvas(midlet, url, savePath, gameTitle));
+            } else if (keyCode == KEY_POUND) {
+                midlet.display.setCurrent(midlet.lastDetailCanvas);
+            }
+        } else {
+            if (keyCode == KEY_POUND) {
+                midlet.display.setCurrent(midlet.lastDetailCanvas);
+            }
         }
     }
 }
