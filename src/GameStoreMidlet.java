@@ -1,8 +1,10 @@
 import javax.microedition.midlet.*;
 import javax.microedition.io.Connector;
+import javax.microedition.io.file.FileConnection; // ⛔ pastikan emulatormu mendukung JSR-75
 import javax.microedition.io.HttpConnection;
 import javax.microedition.lcdui.*;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Vector;
@@ -11,6 +13,7 @@ public class GameStoreMidlet extends MIDlet implements CommandListener {
     private Display display;
     private Canvas splashCanvas, loadingCanvas, welcomeCanvas, refreshCanvas, popupCanvas;
     private GameListCanvas currentGameCanvas;
+    private GameDetailCanvas lastDetailCanvas;
     private List gameList;
     private Image[] gameIcons;
     private Displayable previousScreen;
@@ -73,7 +76,7 @@ public class GameStoreMidlet extends MIDlet implements CommandListener {
                     String iconUrl = gameListData[i][6]; // kolom 6 = URL icon
                     try {
                         System.out.println("Downloading icon from: " + iconUrl);
-                        ((LoadingCanvas) loadingCanvas).setStatus("Mengambil icon: " + (i + 1) + "/" + gameListData.length);
+                        ((LoadingCanvas) loadingCanvas).setStatus("Memuat Icon: " + (i + 1) + "/" + gameListData.length);
                         
                         HttpConnection conn = (HttpConnection) Connector.open(iconUrl);
                         conn.setRequestMethod(HttpConnection.GET);
@@ -346,7 +349,7 @@ class PopupCanvas extends Canvas {
         g.setColor(0x888888);
         Font footFont = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
         g.setFont(footFont);
-    g.drawString("OK untuk kembali", getWidth() / 2, getHeight() - 4, Graphics.BOTTOM | Graphics.HCENTER);
+    g.drawString("OK", getWidth() / 2, getHeight() - 4, Graphics.BOTTOM | Graphics.HCENTER);
     }
 }
 
@@ -401,7 +404,7 @@ class PopupCanvas extends Canvas {
                 GameStoreMidlet.this.refreshGameList();
             } else if (selected.equals("Tentang Aplikasi")) {
                 GameStoreMidlet.this.showPopup("Tentang Aplikasi", 
-                    "Game Store oleh REPP.MY.ID\n\nVersi:\n\n1.0\n\nSitus:\njava.repp.my.id\n\n© 2025 REPP");
+                    "Game Store oleh REPP\n\nVersi:\n\n1.0\n\nSitus:\njava.repp.my.id\n\n© 2025 REPP");
             }
         } else if (action == LEFT || action == -11) {
             if (GameStoreMidlet.this.previousScreen != null) {
@@ -422,7 +425,8 @@ class PopupCanvas extends Canvas {
 }
 
 class RefreshCanvas extends Canvas {
-    private int frame = 0;
+    private int dotCount = 0;
+    private long lastUpdateTime = 0;
 
     public RefreshCanvas() {
         startAnimation();
@@ -432,9 +436,13 @@ class RefreshCanvas extends Canvas {
         new Thread() {
             public void run() {
                 while (GameStoreMidlet.this.display.getCurrent() == RefreshCanvas.this) {
-                    frame++;
-                    repaint();
-                    try { Thread.sleep(150); } catch (Exception e) {}
+                    long now = System.currentTimeMillis();
+                    if (now - lastUpdateTime > 400) {
+                        dotCount = (dotCount + 1) % 5; // 0-4 titik
+                        lastUpdateTime = now;
+                        repaint();
+                    }
+                    try { Thread.sleep(50); } catch (Exception e) {}
                 }
             }
         }.start();
@@ -442,11 +450,25 @@ class RefreshCanvas extends Canvas {
 
     protected void paint(Graphics g) {
         int w = getWidth(), h = getHeight();
-        g.setColor(0); g.fillRect(0, 0, w, h);
+
+        // Background hitam
+        g.setColor(0); 
+        g.fillRect(0, 0, w, h);
+
+        // Teks "Menyegarkan"
+        String baseText = "Menyegarkan";
+        int x = w / 2;
+        int y = h / 2 - 10;
+
         g.setColor(0xFFFFFF);
-        g.drawString("Menyegarkan...", w / 2, h / 2 - 20, Graphics.HCENTER | Graphics.TOP);
-        char[] spin = { '|', '/', '-', '\\' };
-        g.drawChar(spin[frame % 4], w / 2, h / 2, Graphics.HCENTER | Graphics.TOP);
+        g.drawString(baseText, x, y, Graphics.HCENTER | Graphics.TOP);
+
+        // Tambahkan titik-titik biru
+        g.setColor(0x00AAFF);
+        int dotSpacing = Font.getDefaultFont().charWidth('.');
+        for (int i = 0; i < dotCount; i++) {
+            g.drawChar('.', x + (i * dotSpacing), y + Font.getDefaultFont().getHeight(), Graphics.TOP | Graphics.LEFT);
+        }
     }
 }
 
@@ -649,8 +671,6 @@ class WelcomeCanvas extends Canvas {
 }
 
 class GameListCanvas extends Canvas {
-    // private Command cmdMenu = new Command("Menu", Command.SCREEN, 1);
-    // private Command cmdExit = new Command("Keluar", Command.EXIT, 2);
     private String[][] gameData;
     private Image[] icons;
     private int selectedIndex = 0;
@@ -1008,27 +1028,166 @@ private void addWord(Vector result, String word, int maxWidth) {
 }
 
 protected void keyPressed(int keyCode) {
-     int action = getGameAction(keyCode);
-     int contentAreaHeight = getHeight() - font.getHeight() - 10 - font.getHeight(); // header + footer
-     int h = getHeight();
+    int action = getGameAction(keyCode);
+    int scrollAmount = font.getHeight() + 2;
 
     if (action == UP) {
-        scrollY -= font.getHeight();
+        scrollY -= scrollAmount;
         if (scrollY < 0) scrollY = 0;
         repaint();
     } else if (action == DOWN) {
-        scrollY += font.getHeight();
-        if (scrollY > contentHeight - contentAreaHeight)
-            scrollY = contentHeight - contentAreaHeight;
+        scrollY += scrollAmount;
+        if (scrollY > contentHeight - (getHeight() - font.getHeight() * 2)) {
+            scrollY = contentHeight - (getHeight() - font.getHeight() * 2);
+        }
         repaint();
     } else if (keyCode == KEY_STAR) {
+        // Softkey kiri untuk mulai download
+        String gameUrl = data[1]; // URL_JAR
+        String savePath = "file:///E:/Games/" + data[0].replace(' ', '_') + ".jar"; // ubah sesuai path ponselmu
+        String title = data[0];
+
+        lastDetailCanvas = this; // Simpan screen sebelum download
+        GameStoreMidlet.this.display.setCurrent(new DownloadCanvas(GameStoreMidlet.this, gameUrl, savePath, title));
+    } else if (keyCode == KEY_POUND) {
+        GameStoreMidlet.this.showGameListFrom(GameStoreMidlet.this.gameListData, GameStoreMidlet.this.gameIcons);
+    }
+}   
+}
+
+class DownloadCanvas extends Canvas implements Runnable {
+    private String url;
+    private String savePath;
+    private String gameTitle;
+    private GameStoreMidlet midlet;
+    private int progressBytes = 0;
+    private int totalBytes = 0;
+    private boolean isDownloading = false;
+    private boolean cancelDownload = false;
+    private long lastMarqueeTime = 0;
+    private int marqueeOffset = 0;
+    private Font font = Font.getDefaultFont();
+
+    public DownloadCanvas(GameStoreMidlet midlet, String url, String savePath, String gameTitle) {
+    this.midlet = midlet;
+    this.url = url;
+    this.savePath = savePath;
+    this.gameTitle = gameTitle;
+    startDownload();
+}
+
+
+    private void startDownload() {
+        isDownloading = true;
+        cancelDownload = false;
+        progressBytes = 0;
+        new Thread(this).start();
+    }
+
+    public void run() {
+        HttpConnection conn = null;
+        InputStream is = null;
+        FileConnection fc = null;
+        OutputStream os = null;
+
         try {
-            GameStoreMidlet.this.platformRequest(data[1]); // download URL
-            } catch (Exception e) {}
-        } else if (keyCode == KEY_POUND) {
-            GameStoreMidlet.this.showGameListFrom(GameStoreMidlet.this.gameListData, GameStoreMidlet.this.gameIcons);
+            conn = (HttpConnection) Connector.open(url);
+            conn.setRequestMethod(HttpConnection.GET);
+            totalBytes = (int) conn.getLength();
+
+            is = conn.openInputStream();
+            fc = (FileConnection) Connector.open(savePath, Connector.WRITE);
+            if (!fc.exists()) fc.create();
+            os = fc.openOutputStream();
+
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = is.read(buffer)) != -1) {
+                if (cancelDownload) break;
+                os.write(buffer, 0, len);
+                progressBytes += len;
+                repaint();
+            }
+
+            os.flush();
+            if (!cancelDownload) {
+                GameStoreMidlet.this.showPopup("Unduhan selesai!", "");
+            } else {
+                GameStoreMidlet.this.showPopup("Download dibatalkan.", "");
+            }
+
+            GameStoreMidlet.this.display.setCurrent(GameStoreMidlet.this.lastDetailCanvas);
+
+        } catch (Exception e) {
+            GameStoreMidlet.this.showPopup("Gagal mengunduh: " + e.getMessage(), "");
+            GameStoreMidlet.this.display.setCurrent(GameStoreMidlet.this.lastDetailCanvas);
+        } finally {
+            try { if (os != null) os.close(); } catch (Exception e) {}
+            try { if (is != null) is.close(); } catch (Exception e) {}
+            try { if (conn != null) conn.close(); } catch (Exception e) {}
+            try { if (fc != null) fc.close(); } catch (Exception e) {}
+        }
+    }
+
+    public void backToDetail() {
+        if (lastDetailCanvas != null) {
+            display.setCurrent(lastDetailCanvas);
+        }
+    }
+
+
+    protected void paint(Graphics g) {
+        int w = getWidth(), h = getHeight();
+        g.setColor(0); g.fillRect(0, 0, w, h);
+        g.setColor(0xFFFFFF);
+
+        // Header
+        g.setColor(0);
+        g.fillRect(0, 0, w, font.getHeight() + 6);
+        g.setColor(0xFFFFFF);
+
+        int y = 3;
+        long now = System.currentTimeMillis();
+        if (now - lastMarqueeTime > 100) {
+            marqueeOffset++;
+            lastMarqueeTime = now;
+        }
+
+        int textW = font.stringWidth(gameTitle);
+        int maxW = w - 10;
+        if (textW > maxW) {
+            int offset = marqueeOffset % (textW + 20);
+            g.setClip(5, y, maxW, font.getHeight());
+            g.drawString(gameTitle, 5 - offset, y, Graphics.TOP | Graphics.LEFT);
+            g.setClip(0, 0, w, h);
+        } else {
+            g.drawString(gameTitle, 5, y, Graphics.TOP | Graphics.LEFT);
+        }
+
+        // Progress bar hijau
+        g.setColor(0x00FF00);
+        int barW = totalBytes > 0 ? (progressBytes * (w - 10) / totalBytes) : 0;
+        g.fillRect(5, font.getHeight() + 3, barW, 2);
+
+        // Progress text
+        g.setColor(0x00FF00);
+        String progressText = progressBytes + " / " + totalBytes +
+                              " (" + (totalBytes > 0 ? (progressBytes * 100 / totalBytes) : 0) + "%)";
+        g.drawString(progressText, w / 2, h - font.getHeight() - 3, Graphics.BOTTOM | Graphics.HCENTER);
+
+        // Tombol Batal
+        g.drawString("Batal", w - 2, h - 2, Graphics.BOTTOM | Graphics.RIGHT);
+
+        if (isDownloading) repaint();
+    }
+
+    protected void keyPressed(int keyCode) {
+        int action = getGameAction(keyCode);
+        if (action == RIGHT) {
+            cancelDownload = true;
         }
     }
 }
+
 
 }
